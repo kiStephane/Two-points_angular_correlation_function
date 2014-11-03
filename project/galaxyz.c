@@ -228,10 +228,13 @@ int main(int argc, char *argv[])
   for ( i = 0; i < nr_of_bins; ++i ) 
     {
       NSimdivNReal = ((double)(Nooflines_Sim))/((double)(Nooflines_Real));
+        
       w = 1.0 + NSimdivNReal*NSimdivNReal*histogramDD[i]/histogramRR[i] 
 	-2.0*NSimdivNReal*histogramDR[i]/((double)(histogramRR[i]));
+        
       printf(" %6.3f      %3.6f\t%15ld\t%15ld\t%15ld\n",((float)i+0.5)/binsperdegree, w, 
 	     histogramDD[i], histogramDR[i], histogramRR[i]);
+        
       fprintf(outfile,"%6.3f\t%15lf\t%15ld\t%15ld\t%15ld\n",((float)i+0.5)/binsperdegree, w, 
 	      histogramDD[i], histogramDR[i], histogramRR[i]);
     }
