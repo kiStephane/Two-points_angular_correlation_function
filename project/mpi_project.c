@@ -93,6 +93,7 @@ int main(int argc, char *argv[]){
     float *xd_real, *yd_real, *zd_real;         /* Arrays for real data */
     float *xd_sim , *yd_sim , *zd_sim;          /* Arrays for random data */
     double NSimdivNReal, w;
+    double *W, *W_sum;
     double startTime, endTime;
     
     
@@ -110,6 +111,8 @@ int main(int argc, char *argv[]){
     
     histogramRR = (long int *)calloc( nr_of_bins+1, sizeof(long int));
     histogramRR_total = (long int *)calloc( nr_of_bins+1, sizeof(long int));
+    
+    W=(double*)calloc(nr_of_bins, sizeof(double));
     
     /* Initialize the histograms to zero */
     for ( int i = 0; i <= nr_of_bins; ++i )
@@ -165,6 +168,7 @@ int main(int argc, char *argv[]){
         xd_real = (float *)calloc( Nooflines_Real, sizeof(float) );
         yd_real = (float *)calloc( Nooflines_Real, sizeof(float) );
         zd_real = (float *)calloc( Nooflines_Real, sizeof(float) );
+        
         MPI_Bcast(&Nooflines_Real,1, MPI_INT, 0,MPI_COMM_WORLD );
         
         /* Read the file with real input data */
@@ -220,19 +224,16 @@ int main(int argc, char *argv[]){
                                histogramRR, pi, costotaldegrees);
             }
             
-            for ( j = 0; j < Nooflines_Real; j++ ) // IMPORTANT Nooflines_Real should be equal to Nooflines_Sim
+            for ( j = 0; j < Nooflines_Sim; j++ ) // IMPORTANT Nooflines_Real should be equal to Nooflines_Sim
             {
                 add_histogram (xd_real[i], yd_real[i], zd_real[i],
                                xd_sim[j], yd_sim[j], zd_sim[j],
                                histogramDR, pi, costotaldegrees);
-                
-                add_histogram (xd_sim[i], yd_sim[i], zd_sim[i],
-                               xd_real[j], yd_real[j], zd_real[j],
-                               histogramDR, pi, costotaldegrees);
             }
+
             
             k = k+1;
-            i += k*np;
+            i = k*np;
         }
         
         /* Multiply DD and RR histogram with 2 since we only calculate (i,j) pair, not (j,i) */
@@ -268,30 +269,60 @@ int main(int argc, char *argv[]){
         MPI_Allreduce(histogramDR, histogramDR_total, nr_of_bins+1, MPI_LONG, MPI_SUM, MPI_COMM_WORLD);
         MPI_Allreduce(histogramRR, histogramRR_total, nr_of_bins+1, MPI_LONG, MPI_SUM, MPI_COMM_WORLD);
         
+        //=============FOR Debug================
+        TotalCountDD = 0L;
+        for ( i = 0; i <= nr_of_bins; ++i )
+            TotalCountDD += (long)(histogramDD_total[i]);
+        printf("TOTAL Histogram DD count = %ld\n\n", TotalCountDD);
+        
+        TotalCountDR = 0L;
+        for ( i = 0; i <= nr_of_bins; ++i )
+            TotalCountDR += (long)(histogramDR_total[i]);
+        printf("TOTAL Histogram DR count = %ld\n\n",TotalCountDR);
+        
+        TotalCountRR = 0L;
+        for ( i = 0; i <= nr_of_bins; ++i )
+            TotalCountRR += (long)(histogramRR_total[i]);
+        printf("TOTAL Histogram RR count = %ld\n\n", TotalCountRR);
+        //==========================================
         
         /* Open the output file */
         outfile = fopen(argv[3],"w");
         if ( outfile == NULL ) {
             printf("Unable to open %s\n",argv[3]);
-            return(-1);
+            MPI_Finalize();
+            exit(0);
         }
+        
+        W_sum=(double*)calloc(nr_of_bins, sizeof(double));
+        
+        i=id;
+        k=0;
+        while (i<nr_of_bins)
+        {
+            NSimdivNReal = ((double)(Nooflines_Sim))/((double)(Nooflines_Real));
+            
+            W[i] = 1.0 + NSimdivNReal*NSimdivNReal*histogramDD_total[i]/histogramRR_total[i]
+            -2.0*NSimdivNReal*histogramDR_total[i]/((double)(histogramRR_total[i]));
+            
+            k = k+1;
+            i = id+k*np;
+        }
+        
+        MPI_Reduce(W, W_sum, nr_of_bins, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
         
         fprintf(outfile,"bin center\tomega\t        hist_DD\t        hist_DR\t        hist_RR\n");
         for ( i = 0; i < nr_of_bins; ++i )
         {
-            NSimdivNReal = ((double)(Nooflines_Sim))/((double)(Nooflines_Real));
-            
-            w = 1.0 + NSimdivNReal*NSimdivNReal*histogramDD[i]/histogramRR[i]
-            -2.0*NSimdivNReal*histogramDR[i]/((double)(histogramRR[i]));
-            
-            fprintf(outfile,"%6.3f\t%15lf\t%15ld\t%15ld\t%15ld\n",((float)i+0.5)/binsperdegree, w,
-                    histogramDD[i], histogramDR[i], histogramRR[i]);
+            fprintf(outfile,"%6.3f\t%15lf\t%15ld\t%15ld\t%15ld\n",((float)i+0.5)/binsperdegree, W_sum[i],
+                    histogramDD_total[i], histogramDR_total[i], histogramRR_total[i]);
         }
         
         fclose(outfile);
         
         endTime = MPI_Wtime();      // Stop measuring time
         printf("Time: %f s\n", endTime-startTime);
+        free(W_sum);
         
     }
     else { /* all other processes do this */
@@ -308,7 +339,7 @@ int main(int argc, char *argv[]){
         MPI_Bcast(yd_real,Nooflines_Real, MPI_FLOAT, 0,MPI_COMM_WORLD );
         MPI_Bcast(zd_real,Nooflines_Real, MPI_FLOAT, 0,MPI_COMM_WORLD );
         
-        //=======Receive simulated data from process 1=======
+        //=======Receive simulated data from process 0=======
         MPI_Bcast(&Nooflines_Sim,1, MPI_INT, 0,MPI_COMM_WORLD );
         
         xd_sim = (float *)calloc( Nooflines_Sim, sizeof(float) );
@@ -338,19 +369,17 @@ int main(int argc, char *argv[]){
                                histogramRR, pi, costotaldegrees);
             }
             
-            for ( j = 0; j < Nooflines_Real; j++ ) // IMPORTANT Nooflines_Real should be equal to Nooflines_Sim
+            for ( j = 0; j < Nooflines_Sim; j++ ) // IMPORTANT Nooflines_Real should be equal to Nooflines_Sim
             {
                 add_histogram (xd_real[i], yd_real[i], zd_real[i],
                                xd_sim[j], yd_sim[j], zd_sim[j],
                                histogramDR, pi, costotaldegrees);
-                
-                add_histogram (xd_sim[i], yd_sim[i], zd_sim[i],
-                               xd_real[j], yd_real[j], zd_real[j],
-                               histogramDR, pi, costotaldegrees);
             }
+
+            
             
             k = k+1;
-            i += k*np;
+            i = id+k*np;
         }
         
         /* Multiply DD and RR histogram with 2 since we only calculate (i,j) pair, not (j,i) */
@@ -384,6 +413,20 @@ int main(int argc, char *argv[]){
         MPI_Allreduce(histogramDR, histogramDR_total, nr_of_bins+1, MPI_LONG, MPI_SUM, MPI_COMM_WORLD);
         MPI_Allreduce(histogramRR, histogramRR_total, nr_of_bins+1, MPI_LONG, MPI_SUM, MPI_COMM_WORLD);
         
+        i=id;
+        k=0;
+        while (i<nr_of_bins)
+        {
+            NSimdivNReal = ((double)(Nooflines_Sim))/((double)(Nooflines_Real));
+            
+            W[i] = 1.0 + NSimdivNReal*NSimdivNReal*histogramDD_total[i]/histogramRR_total[i]
+            -2.0*NSimdivNReal*histogramDR_total[i]/((double)(histogramRR_total[i]));
+            
+            k = k+1;
+            i = id+k*np;
+        }
+        
+        MPI_Reduce(W, W, nr_of_bins, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
         
     }
     /* Free all allocated arrays */
@@ -394,6 +437,8 @@ int main(int argc, char *argv[]){
     free(histogramDD_total);
     free(histogramDR_total);
     free(histogramRR_total);
+    
+    free(W);
     
     free(xd_real);free(yd_real);free(zd_real);
     free(xd_sim);free(yd_sim);free(zd_sim);
