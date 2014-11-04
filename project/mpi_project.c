@@ -3,8 +3,9 @@
 //  
 //
 //  Created by Stephane KI on 01/11/2014.
-//  Compile : mpicc -O3 -std=c99 mpi_project.c -o mpi_project
-//  Run : srun -n 3 mpi_project real_data sim_data output_file
+//
+//  Compile : mpicc -O3 -std=c99 mpi_project.c -o galaxyz
+//  Run : srun -n 3 galaxyz real_data sim_data output_file
 //
 
 #include <stdio.h>
@@ -92,7 +93,7 @@ int main(int argc, char *argv[]){
     long int *histogramDD_total, *histogramDR_total, *histogramRR_total; /* SUM Arrays for histograms */
     float *xd_real, *yd_real, *zd_real;         /* Arrays for real data */
     float *xd_sim , *yd_sim , *zd_sim;          /* Arrays for random data */
-    double NSimdivNReal, w;
+    double NSimdivNReal;
     double *W, *W_sum;
     double startTime, endTime;
     
@@ -246,23 +247,23 @@ int main(int argc, char *argv[]){
         histogramRR[0] += ((long)(k));
         
         /* Count the total nr of values in the DD histograms */
-        TotalCountDD = 0L;
+        /*TotalCountDD = 0L;
         for ( i = 0; i <= nr_of_bins; ++i )
             TotalCountDD += (long)(histogramDD[i]);
-        printf("%d:  histogram DD count = %ld\n\n", id, TotalCountDD);
+        printf("%d:  histogram DD count = %ld\n\n", id, TotalCountDD);*/
         
         
         /* Count the total nr of values in the RR histograms */
-        TotalCountRR = 0L;
+        /*TotalCountRR = 0L;
         for ( i = 0; i <= nr_of_bins; ++i )
             TotalCountRR += (long)(histogramRR[i]);
-        printf("%d:  histogram RR count = %ld\n\n", id, TotalCountRR);
+        printf("%d:  histogram RR count = %ld\n\n", id, TotalCountRR);*/
         
         /* Count the total nr of values in the DR histograms */
-        TotalCountDR = 0L;
+        /*TotalCountDR = 0L;
         for ( i = 0; i <= nr_of_bins; ++i )
             TotalCountDR += (long)(histogramDR[i]);
-        printf("%d:  histogram DR count = %ld\n\n",id, TotalCountDR);
+        printf("%d:  histogram DR count = %ld\n\n",id, TotalCountDR);*/
         
         
         MPI_Allreduce(histogramDD, histogramDD_total, nr_of_bins+1, MPI_LONG, MPI_SUM, MPI_COMM_WORLD);
@@ -296,6 +297,7 @@ int main(int argc, char *argv[]){
         
         W_sum=(double*)calloc(nr_of_bins, sizeof(double));
         
+        //========Compute W===========================
         i=id;
         k=0;
         while (i<nr_of_bins)
@@ -327,7 +329,7 @@ int main(int argc, char *argv[]){
     }
     else { /* all other processes do this */
         
-        //========Receive real data from process 0=============
+        //========Receive real data from process 0 =============
         MPI_Bcast(&Nooflines_Real,1, MPI_INT, 0,MPI_COMM_WORLD );
         
         /* Allocate arrays for x, y and z values */
@@ -339,7 +341,7 @@ int main(int argc, char *argv[]){
         MPI_Bcast(yd_real,Nooflines_Real, MPI_FLOAT, 0,MPI_COMM_WORLD );
         MPI_Bcast(zd_real,Nooflines_Real, MPI_FLOAT, 0,MPI_COMM_WORLD );
         
-        //=======Receive simulated data from process 0=======
+        //=======Receive simulated data from process 0 =======
         MPI_Bcast(&Nooflines_Sim,1, MPI_INT, 0,MPI_COMM_WORLD );
         
         xd_sim = (float *)calloc( Nooflines_Sim, sizeof(float) );
@@ -353,7 +355,7 @@ int main(int argc, char *argv[]){
         //Cyclical decomposition of operations
         //Process i is assigned data items i, i+np, i+2np, i+3np
         
-        //=============Histogram DD and RR=================
+        //============= Histogram DD ,RR , DR =================
         i=id;
         k=0;
         while (i<Nooflines_Real) {
@@ -391,28 +393,29 @@ int main(int argc, char *argv[]){
         histogramRR[0] += ((long)(k));
         
         /* Count the total nr of values in the DD histograms */
-        TotalCountDD = 0L;
+        /*TotalCountDD = 0L;
         for ( i = 0; i <= nr_of_bins; ++i )
             TotalCountDD += (long)(histogramDD[i]);
-        printf("%d:  histogram DD count = %ld\n\n", id, TotalCountDD);
+        printf("%d:  histogram DD count = %ld\n\n", id, TotalCountDD);*/
         
         
         /* Count the total nr of values in the RR histograms */
-        TotalCountRR = 0L;
+        /*TotalCountRR = 0L;
         for ( i = 0; i <= nr_of_bins; ++i )
             TotalCountRR += (long)(histogramRR[i]);
-        printf("%d:  histogram RR count = %ld\n\n", id, TotalCountRR);
+        printf("%d:  histogram RR count = %ld\n\n", id, TotalCountRR);*/
         
         /* Count the total nr of values in the DR histograms */
-        TotalCountDR = 0L;
+        /*TotalCountDR = 0L;
         for ( i = 0; i <= nr_of_bins; ++i )
             TotalCountDR += (long)(histogramDR[i]);
-        printf("%d:  histogram DR count = %ld\n\n",id, TotalCountDR);
+        printf("%d:  histogram DR count = %ld\n\n",id, TotalCountDR);*/
         
         MPI_Allreduce(histogramDD, histogramDD_total, nr_of_bins+1, MPI_LONG, MPI_SUM, MPI_COMM_WORLD);
         MPI_Allreduce(histogramDR, histogramDR_total, nr_of_bins+1, MPI_LONG, MPI_SUM, MPI_COMM_WORLD);
         MPI_Allreduce(histogramRR, histogramRR_total, nr_of_bins+1, MPI_LONG, MPI_SUM, MPI_COMM_WORLD);
         
+        //========Compute W===========================
         i=id;
         k=0;
         while (i<nr_of_bins)
